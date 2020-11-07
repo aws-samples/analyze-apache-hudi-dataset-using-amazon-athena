@@ -2,10 +2,6 @@
 
 This repository consists of scala code sample for Apache Hudi dataset tranformation in Amazon S3.
 
-Be sure to:
-
-* Change the title in this README
-* Edit your repository description on GitHub
 
 ## Security
 
