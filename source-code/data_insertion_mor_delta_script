@@ -1,0 +1,43 @@
+
+spark-shell --conf "spark.serializer=org.apache.spark.serializer.KryoSerializer" --conf "spark.sql.hive.convertMetastoreParquet=false" --jars /usr/lib/hudi/hudi-spark-bundle.jar,/usr/lib/spark/external/lib/spark-avro.jar
+
+import org.apache.spark.sql.SaveMode
+import org.apache.spark.sql.functions._
+import org.apache.hudi.DataSourceWriteOptions
+import org.apache.hudi.config.HoodieWriteConfig
+import org.apache.hudi.hive.MultiPartKeysValueExtractor
+import org.apache.hudi.config.HoodieCompactionConfig
+
+//Set up various input values as variables
+val inputDataPath = "s3://weather-raw-bucket/delta_parquet/"
+val hudiTableName = "weather_hudi_mor"
+val hudiTablePath = "s3://athena-hudi-bucket/hudi_weather/" + hudiTableName
+
+// Set up our Hudi Data Source Options
+val hudiOptions = Map[String,String](
+    DataSourceWriteOptions.RECORDKEY_FIELD_OPT_KEY -> "city_id",
+	DataSourceWriteOptions.RECORDKEY_FIELD_OPT_KEY -> "timestamp",
+    DataSourceWriteOptions.PARTITIONPATH_FIELD_OPT_KEY -> "date", 
+    HoodieWriteConfig.TABLE_NAME -> hudiTableName, 
+	HoodieCompactionConfig.COMPACTION_INLINE_OPT_KEY -> "false",
+	DataSourceWriteOptions.STORAGE_TYPE_OPT_KEY -> "MERGE_ON_READ",
+    DataSourceWriteOptions.OPERATION_OPT_KEY ->
+        DataSourceWriteOptions.INSERT_OPERATION_OPT_VAL, 
+    DataSourceWriteOptions.PRECOMBINE_FIELD_OPT_KEY -> "timestamp", 
+    DataSourceWriteOptions.HIVE_SYNC_ENABLED_OPT_KEY -> "true", 
+    DataSourceWriteOptions.HIVE_TABLE_OPT_KEY -> hudiTableName, 
+    DataSourceWriteOptions.HIVE_PARTITION_FIELDS_OPT_KEY -> "date", 
+    DataSourceWriteOptions.HIVE_PARTITION_EXTRACTOR_CLASS_OPT_KEY ->
+        classOf[MultiPartKeysValueExtractor].getName)
+		
+
+// Read data from S3 and create a DataFrame with Partition and Record Key
+val inputDF = spark.read.format("parquet").load(inputDataPath)
+
+// Write data into the Hudi dataset
+inputDF.write.format("org.apache.hudi").options(hudiOptions).mode(SaveMode.Append).save(hudiTablePath)
+
+
+https://www.codetd.com/en/article/7970832
+https://hudi.apache.org/docs/0.5.1-writing_data.html
+

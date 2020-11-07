@@ -1,6 +1,6 @@
-## My Project
+## Query Apache Hudi Dataset in Amazon S3 Data Lake with Amazon Athena
 
-TODO: Fill this README out!
+This repository consists of scala code sample for Apache Hudi dataset tranformation in Amazon S3.
 
 Be sure to:
 
