@@ -37,7 +37,3 @@ val inputDF = spark.read.format("parquet").load(inputDataPath)
 // Write data into the Hudi dataset
 inputDF.write.format("org.apache.hudi").options(hudiOptions).mode(SaveMode.Append).save(hudiTablePath)
 
-
-https://www.codetd.com/en/article/7970832
-https://hudi.apache.org/docs/0.5.1-writing_data.html
-
