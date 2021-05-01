@@ -1,0 +1,203 @@
+AWSTemplateFormatVersion: 2010-09-09
+Description: Query Apache Hudi Dataset in an Amazon S3 Data Lake with Amazon Athena
+Metadata:
+  AWS::CloudFormation::Interface:
+    ParameterGroups:
+      -
+        Label:
+          default: "Network & Security Configuration"
+        Parameters:
+          - Keyname
+          - VpcCIDR
+          - PublicSubnet1CIDR
+          - PublicSubnet2CIDR
+    ParameterLabels:
+      Keyname:
+        default: "Keypair name"
+      VpcCIDR:
+        default: "IP range for new VPC"
+      PublicSubnet1CIDR:
+        default: "Public Subnet 1 IP range"
+      PublicSubnet2CIDR:
+        default: "Public Subnet 2 IP range"
+
+Parameters:
+  EnvironmentName:
+    Description: An environment name that will be prefixed to resource names
+    Type: String
+    Default: hudi-blog
+  VpcCIDR:
+    Description: Enter the IP range (CIDR notation) for this VPC or leave it default
+    Type: String
+    Default: 10.0.0.0/16
+
+  PublicSubnet1CIDR:
+    Description: Enter the IP range (CIDR notation) for the public subnet in the first Availability Zone or leave it default
+    Type: String
+    Default: 10.0.1.0/24
+
+  PublicSubnet2CIDR:
+    Description: Enter the IP range (CIDR notation) for the public subnet in the second Availability Zone or leave it default
+    Type: String
+    Default: 10.0.2.0/24
+
+  Keyname:
+    Description: Chose  key name
+    Type: AWS::EC2::KeyPair::KeyName
+
+Resources:
+  VPC:
+    Type: AWS::EC2::VPC
+    Properties:
+      CidrBlock: !Ref VpcCIDR
+      InstanceTenancy: default
+      EnableDnsSupport: true
+      EnableDnsHostnames: true
+      Tags:
+        - Key: Name
+          Value: !Ref EnvironmentName
+
+  PublicSubnet1:
+    Type: AWS::EC2::Subnet
+    Properties:
+      VpcId: !Ref VPC
+      AvailabilityZone: us-east-1a
+      CidrBlock: !Ref PublicSubnet1CIDR
+      MapPublicIpOnLaunch: true
+      Tags:
+        - Key: Name
+          Value: !Ref EnvironmentName
+
+  PublicSubnet2:
+    Type: AWS::EC2::Subnet
+    Properties:
+      VpcId: !Ref VPC
+      AvailabilityZone: us-east-1b
+      CidrBlock: !Ref PublicSubnet2CIDR
+      MapPublicIpOnLaunch: true
+      Tags:
+        - Key: Name
+          Value: !Ref EnvironmentName
+
+  InternetGateway:
+    Type: AWS::EC2::InternetGateway
+    Properties:
+      Tags:
+        - Key: Name
+          Value: !Ref EnvironmentName
+
+  InternetGatewayAttachment:
+    Type: AWS::EC2::VPCGatewayAttachment
+    Properties:
+      InternetGatewayId: !Ref InternetGateway
+      VpcId: !Ref VPC
+
+  PublicRouteTable:
+    Type: AWS::EC2::RouteTable
+    Properties:
+      VpcId: !Ref VPC
+      Tags:
+        - Key: Name
+          Value: !Sub ${EnvironmentName} Public Routes
+
+  DefaultPublicRoute:
+    Type: AWS::EC2::Route
+    DependsOn: InternetGatewayAttachment
+    Properties:
+      RouteTableId: !Ref PublicRouteTable
+      DestinationCidrBlock: 0.0.0.0/0
+      GatewayId: !Ref InternetGateway
+
+  PublicSubnet1RouteTableAssociation:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Properties:
+      RouteTableId: !Ref PublicRouteTable
+      SubnetId: !Ref PublicSubnet1
+
+  PublicSubnet2RouteTableAssociation:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Properties:
+      RouteTableId: !Ref PublicRouteTable
+      SubnetId: !Ref PublicSubnet2
+
+#  AppS3Bucket:
+#    Type: AWS::S3::Bucket
+#    Properties:
+#      BucketName: !Ref FlinkS3Bucket
+#      AccessControl: Private
+
+  S3Bucket:
+   Type: AWS::S3::Bucket
+   Properties:
+     AccessControl: Private
+
+  EmrInstanceRole:
+    Type: "AWS::IAM::Role"
+    Properties:
+         AssumeRolePolicyDocument:
+            Version: "2012-10-17"
+            Statement:
+              -
+                Effect: "Allow"
+                Principal:
+                  Service:
+                    - "ec2.amazonaws.com"
+                Action:
+                    - "sts:AssumeRole"
+         Path: "/"
+         ManagedPolicyArns:
+            - 'arn:aws:iam::aws:policy/service-role/AmazonElasticMapReduceforEC2Role'
+
+  EMRClusterServiceRole:
+      Type: AWS::IAM::Role
+      Properties:
+        AssumeRolePolicyDocument:
+          Version: 2012-10-17
+          Statement:
+             Effect: Allow
+             Principal:
+               Service:
+                 - 'elasticmapreduce.amazonaws.com'
+             Action:
+               - 'sts:AssumeRole'
+        ManagedPolicyArns:
+            - 'arn:aws:iam::aws:policy/service-role/AmazonElasticMapReduceRole'
+        Path: /
+
+  MyEmrCluster: 
+    Type: AWS::EMR::Cluster
+    Properties:
+      Name: blog-demo
+      JobFlowRole: !Ref EmrInstanceProfile
+      LogUri: !Sub 's3://${S3Bucket}/EMRLOGS/'
+      ReleaseLabel: emr-5.32.0
+       
+      Applications:
+        - Name: Hadoop
+        - Name: Spark
+        - Name: Tez
+        - Name: Hive
+
+      Instances:
+         MasterInstanceGroup:
+            InstanceCount: 1
+            InstanceType: m4.xlarge
+            Market: ON_DEMAND
+            Name: cfnMaster
+         CoreInstanceGroup:
+            InstanceCount: 1
+            InstanceType: m4.xlarge
+            Market: ON_DEMAND
+            Name: cfnCore
+         Ec2SubnetId: !Ref PublicSubnet1
+         Ec2KeyName: !Ref Keyname
+      VisibleToAllUsers: true
+      ServiceRole: !Ref EMRClusterServiceRole
+
+  EmrInstanceProfile:
+    Type: "AWS::IAM::InstanceProfile"
+    Properties:
+      Path: /
+      Roles:
+        -
+          Ref: "EmrInstanceRole"
