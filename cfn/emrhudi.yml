@@ -130,7 +130,13 @@ Resources:
    Type: AWS::S3::Bucket
    Properties:
      AccessControl: Private
-
+     BucketEncryption:
+        ServerSideEncryptionConfiguration:
+         - ServerSideEncryptionByDefault:
+            SSEAlgorithm: 'AES256'
+     VersioningConfiguration:
+        Status: Enabled
+        
   EmrInstanceRole:
     Type: "AWS::IAM::Role"
     Properties:
